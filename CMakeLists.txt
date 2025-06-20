@@ -18,4 +18,9 @@ add_executable(display ${SRC} ${HEADER})
 
 target_link_libraries(display pico_stdlib hardware_i2c)
 
+target_include_directories(display
+	PRIVATE
+	include
+)
+
 pico_add_extra_outputs(display)

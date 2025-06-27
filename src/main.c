@@ -38,8 +38,24 @@ void SSD1306_send_buf(uint8_t buf[], int buflen) {
     free(temp_buf);
 }
 
+
+static void init_i2c_pin() {
+  gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
+  gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
+}
+
+static void init_pull_up_i2c() {
+  gpio_pull_up(PICO_DEFAULT_I2C_SDA_PIN);
+  gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
+}
+
+
 // To extract beceause the init should be called only 1 times
 void display_init() {
+  stdio_init_all();
+  i2c_init(i2c_default, SSD1306_I2C_CLK * 1000);
+  init_i2c_pin();
+  init_pull_up_i2c();
   uint8_t cmds[] = {
     SSD1306_SET_DISP,               // set display off
     /* memory mapping */
@@ -88,17 +104,6 @@ void calc_render_area_buflen(struct render_area *area) {
     // calculate how long the flattened buffer will be for a render area
     area->buflen = (area->end_col - area->start_col + 1) * (area->end_page - area->start_page + 1);
 }
-
-static void init_i2c_pin() {
-  gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
-  gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
-}
-
-static void init_pull_up_i2c() {
-  gpio_pull_up(PICO_DEFAULT_I2C_SDA_PIN);
-  gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
-}
-
 
 static inline int GetFontIndex(uint8_t ch) {
     if (ch >= 'A' && ch <='Z') {
@@ -152,14 +157,8 @@ void render(uint8_t *buf, struct render_area *area) {
     SSD1306_send_buf(buf, area->buflen);
 }
 
-int main() {
-  stdio_init_all();
-  i2c_init(i2c_default, SSD1306_I2C_CLK * 1000);
-  init_i2c_pin();
-  init_pull_up_i2c();
-  display_init();
+void display_text(int num_args, ...){
 
-  // Initialize render area for entire frame (SSD1306_WIDTH pixels by SSD1306_NUM_PAGES pages)
   struct render_area frame_area = {
   start_col: 0,
   end_col : SSD1306_WIDTH - 1,
@@ -171,13 +170,20 @@ int main() {
   uint8_t buf[SSD1306_BUF_LEN];
   memset(buf, 0, SSD1306_BUF_LEN);
   render(buf, &frame_area);
-  
-  // intro sequence: flash the screen 3 times
-  for (int i = 0; i < 3; i++) {
-    SSD1306_send_cmd(SSD1306_SET_ALL_ON);    // Set all pixels on
-    sleep_ms(500);
-    SSD1306_send_cmd(SSD1306_SET_ENTIRE_ON); // go back to following RAM for pixel state
-    sleep_ms(500);
-  }
+    va_list args;
+    va_start(args, num_args);
+    int y = 0;
+    for (int i = 0; i < num_args; ++i) {
+        char *text = va_arg(args, char *);
+        WriteString(buf, 5, y, text);
+        y+=8;
+    }
+    va_end(args);
+    render(buf, &frame_area);
+}
+
+int main() {
+  display_init();  // Initialize render area for entire frame (SSD1306_WIDTH pixels by SSD1306_NUM_PAGES pages)
+  display_text(3, " HELLO ", " WORLD ", " BLALBLA");
   return 1;
 }

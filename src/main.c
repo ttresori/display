@@ -1,7 +1,42 @@
 #include <stdint.h>
+#include <ctype.h>
+#include <string.h>
+#include <stdlib.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 #include "lib.h"
+
+void SSD1306_send_cmd(uint8_t cmd) {
+    // I2C write process expects a control byte followed by data
+    // this "data" can be a command or data to follow up a command
+    // Co = 1, D/C = 0 => the driver expects a command
+    uint8_t buf[2] = {0x80, cmd};
+    i2c_write_blocking(i2c_default, SSD1306_I2C_ADDR, buf, 2, false);
+}
+
+void SSD1306_send_cmd_list(uint8_t *buf, int num) {
+    for (int i=0;i<num;i++)
+        SSD1306_send_cmd(buf[i]);
+}
+
+
+void SSD1306_send_buf(uint8_t buf[], int buflen) {
+    // in horizontal addressing mode, the column address pointer auto-increments
+    // and then wraps around to the next page, so we can send the entire frame
+    // buffer in one gooooooo!
+
+    // copy our frame buffer into a new buffer because we need to add the control byte
+    // to the beginning
+
+    uint8_t *temp_buf = malloc(buflen + 1);
+
+    temp_buf[0] = 0x40;
+    memcpy(temp_buf+1, buf, buflen);
+
+    i2c_write_blocking(i2c_default, SSD1306_I2C_ADDR, temp_buf, buflen + 1, false);
+
+    free(temp_buf);
+}
 
 // To extract beceause the init should be called only 1 times
 void display_init() {
@@ -49,6 +84,11 @@ void display_init() {
   SSD1306_send_cmd_list(cmds, count_of(cmds));
 }
 
+void calc_render_area_buflen(struct render_area *area) {
+    // calculate how long the flattened buffer will be for a render area
+    area->buflen = (area->end_col - area->start_col + 1) * (area->end_page - area->start_page + 1);
+}
+
 static void init_i2c_pin() {
   gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
   gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
@@ -59,11 +99,85 @@ static void init_pull_up_i2c() {
   gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
 }
 
+
+static inline int GetFontIndex(uint8_t ch) {
+    if (ch >= 'A' && ch <='Z') {
+        return  ch - 'A' + 1;
+    }
+    else if (ch >= '0' && ch <='9') {
+        return  ch - '0' + 27;
+    }
+    else return  0; // Not got that char so space.
+}
+
+static void WriteChar(uint8_t *buf, int16_t x, int16_t y, uint8_t ch) {
+    if (x > SSD1306_WIDTH - 8 || y > SSD1306_HEIGHT - 8)
+        return;
+
+    // For the moment, only write on Y row boundaries (every 8 vertical pixels)
+    y = y/8;
+
+    ch = toupper(ch);
+    int idx = GetFontIndex(ch);
+    int fb_idx = y * 128 + x;
+
+    for (int i=0;i<8;i++) {
+        buf[fb_idx++] = font[idx * 8 + i];
+    }
+}
+
+static void WriteString(uint8_t *buf, int16_t x, int16_t y, char *str) {
+    // Cull out any string off the screen
+    if (x > SSD1306_WIDTH - 8 || y > SSD1306_HEIGHT - 8)
+        return;
+
+    while (*str) {
+        WriteChar(buf, x, y, *str++);
+        x+=8;
+    }
+}
+
+void render(uint8_t *buf, struct render_area *area) {
+    // update a portion of the display with a render area
+    uint8_t cmds[] = {
+        SSD1306_SET_COL_ADDR,
+        area->start_col,
+        area->end_col,
+        SSD1306_SET_PAGE_ADDR,
+        area->start_page,
+        area->end_page
+    };
+
+    SSD1306_send_cmd_list(cmds, count_of(cmds));
+    SSD1306_send_buf(buf, area->buflen);
+}
+
 int main() {
   stdio_init_all();
-[O
   i2c_init(i2c_default, SSD1306_I2C_CLK * 1000);
   init_i2c_pin();
   init_pull_up_i2c();
+  display_init();
+
+  // Initialize render area for entire frame (SSD1306_WIDTH pixels by SSD1306_NUM_PAGES pages)
+  struct render_area frame_area = {
+  start_col: 0,
+  end_col : SSD1306_WIDTH - 1,
+  start_page : 0,
+  end_page : SSD1306_NUM_PAGES - 1
+  };
+  calc_render_area_buflen(&frame_area);
+  // zero the entire display
+  uint8_t buf[SSD1306_BUF_LEN];
+  memset(buf, 0, SSD1306_BUF_LEN);
+  render(buf, &frame_area);
+  
+  // intro sequence: flash the screen 3 times
+  for (int i = 0; i < 3; i++) {
+    SSD1306_send_cmd(SSD1306_SET_ALL_ON);    // Set all pixels on
+    sleep_ms(500);
+    SSD1306_send_cmd(SSD1306_SET_ENTIRE_ON); // go back to following RAM for pixel state
+    sleep_ms(500);
+  }
   return 1;
 }

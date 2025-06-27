@@ -146,8 +146,8 @@ static void render(uint8_t *buf, struct render_area *area) {
     area->start_page,
     area->end_page
   };
-
   uint8_t *temp_buf = malloc(area->buflen +1);
+
   send_command_list(cmds, count_of(cmds));
   temp_buf[0] = 0x40;
   memcpy(temp_buf+1, buf, area->buflen);

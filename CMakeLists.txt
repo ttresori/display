@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.0)
+cmake_minimum_required(VERSION 3.31.6)
 
 include(pico_sdk_import.cmake)
 
@@ -18,7 +18,7 @@ add_executable(display ${SRC} ${HEADER})
 
 target_link_libraries(display pico_stdlib hardware_i2c)
 
-target_include_directories(display
+target_include_directories(display`
 	PRIVATE
 	include
 )

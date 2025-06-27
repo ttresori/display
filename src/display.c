@@ -42,13 +42,24 @@ static void send_command_list(uint8_t *buf, int num) {
   }
 }
 
+// Function to set up a render area for the display
+static void setup_render_area(struct render_area *area, uint8_t start_col, uint8_t end_col, uint8_t start_page, uint8_t end_page) {
+  area->start_col = start_col;
+  area->end_col = end_col;
+  area->start_page = start_page;
+  area->end_page = end_page;
+}
+
 // SSD1306 display initialization code
 static void init_display(void) {
+  struct render_area frame_area;
   stdio_init_all();
   i2c_init(i2c_default, SSD1306_I2C_CLK * 1000);
   init_i2c_pin();
   init_pull_up_i2c();
-   uint8_t cmds[] = {
+  setup_render_area(&frame_area, 0, SSD1306_WIDTH - 1, 0, SSD1306_NUM_PAGES - 1);
+
+  uint8_t cmds[] = {
     SSD1306_SET_DISP,               // set display off
     /* memory mapping */
     SSD1306_SET_MEM_MODE,           // set memory address mode 0 = horizontal, 1 = vertical, 2 = page
@@ -90,14 +101,6 @@ static void init_display(void) {
     SSD1306_SET_DISP | 0x01, // turn display on
   };
    send_command_list(cmds, count_of(cmds));
-}
-
-// Function to set up a render area for the display
-static void setup_render_area(struct render_area *area, uint8_t start_col, uint8_t end_col, uint8_t start_page, uint8_t end_page) {
-  area->start_col = start_col;
-  area->end_col = end_col;
-  area->start_page = start_page;
-  area->end_page = end_page;
 }
 
 // Function to calculate the buffer length for a render area
@@ -184,15 +187,6 @@ void display_text(int num_args, ...) {
 
 int main() {
   init_display(); // Initialize the display
-
-  uint8_t *buffer = (uint8_t *)malloc(SSD1306_BUF_LEN);
-  memset(buffer, 0, SSD1306_BUF_LEN);
-
-  struct render_area frame_area;
-  setup_render_area(&frame_area, 0, SSD1306_WIDTH - 1, 0, SSD1306_NUM_PAGES - 1);
-
   display_text(2, " HELLO ", " WORLD ");
-
-  free(buffer);
   return 1;
 }

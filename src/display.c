@@ -6,36 +6,36 @@
 #include "hardware/i2c.h"
 #include "lib.h"
 
-void SSD1306_send_cmd(uint8_t cmd) {
-    // I2C write process expects a control byte followed by data
-    // this "data" can be a command or data to follow up a command
-    // Co = 1, D/C = 0 => the driver expects a command
-    uint8_t buf[2] = {0x80, cmd};
-    i2c_write_blocking(i2c_default, SSD1306_I2C_ADDR, buf, 2, false);
+static void SSD1306_send_cmd(uint8_t cmd) {
+  // I2C write process expects a control byte followed by data
+  // this "data" can be a command or data to follow up a command
+  // Co = 1, D/C = 0 => the driver expects a command
+  uint8_t buf[2] = {0x80, cmd};
+  i2c_write_blocking(i2c_default, SSD1306_I2C_ADDR, buf, 2, false);
 }
 
-void SSD1306_send_cmd_list(uint8_t *buf, int num) {
-    for (int i=0;i<num;i++)
-        SSD1306_send_cmd(buf[i]);
+static void SSD1306_send_cmd_list(uint8_t *buf, int num) {
+  for (int i=0;i<num;i++)
+    SSD1306_send_cmd(buf[i]);
 }
 
 
-void SSD1306_send_buf(uint8_t buf[], int buflen) {
-    // in horizontal addressing mode, the column address pointer auto-increments
-    // and then wraps around to the next page, so we can send the entire frame
-    // buffer in one gooooooo!
+static void SSD1306_send_buf(uint8_t buf[], int buflen) {
+  // in horizontal addressing mode, the column address pointer auto-increments
+  // and then wraps around to the next page, so we can send the entire frame
+  // buffer in one gooooooo!
 
-    // copy our frame buffer into a new buffer because we need to add the control byte
-    // to the beginning
+  // copy our frame buffer into a new buffer because we need to add the control byte
+  // to the beginning
 
-    uint8_t *temp_buf = malloc(buflen + 1);
+  uint8_t *temp_buf = malloc(buflen + 1);
 
-    temp_buf[0] = 0x40;
-    memcpy(temp_buf+1, buf, buflen);
+  temp_buf[0] = 0x40;
+  memcpy(temp_buf+1, buf, buflen);
 
-    i2c_write_blocking(i2c_default, SSD1306_I2C_ADDR, temp_buf, buflen + 1, false);
+  i2c_write_blocking(i2c_default, SSD1306_I2C_ADDR, temp_buf, buflen + 1, false);
 
-    free(temp_buf);
+  free(temp_buf);
 }
 
 
@@ -100,65 +100,64 @@ void display_init() {
   SSD1306_send_cmd_list(cmds, count_of(cmds));
 }
 
-void calc_render_area_buflen(struct render_area *area) {
-    // calculate how long the flattened buffer will be for a render area
-    area->buflen = (area->end_col - area->start_col + 1) * (area->end_page - area->start_page + 1);
+static void calc_render_area_buflen(struct render_area *area) {
+  // calculate how long the flattened buffer will be for a render area
+  area->buflen = (area->end_col - area->start_col + 1) * (area->end_page - area->start_page + 1);
 }
 
 static inline int GetFontIndex(uint8_t ch) {
-    if (ch >= 'A' && ch <='Z') {
-        return  ch - 'A' + 1;
-    }
-    else if (ch >= '0' && ch <='9') {
-        return  ch - '0' + 27;
-    }
-    else return  0; // Not got that char so space.
+  if (ch >= 'A' && ch <='Z') {
+    return  ch - 'A' + 1;
+  }
+  else if (ch >= '0' && ch <='9') {
+    return  ch - '0' + 27;
+  }
+  else return  0; // Not got that char so space.
 }
 
 static void WriteChar(uint8_t *buf, int16_t x, int16_t y, uint8_t ch) {
-    if (x > SSD1306_WIDTH - 8 || y > SSD1306_HEIGHT - 8)
-        return;
+  if (x > SSD1306_WIDTH - 8 || y > SSD1306_HEIGHT - 8)
+    return;
 
-    // For the moment, only write on Y row boundaries (every 8 vertical pixels)
-    y = y/8;
+  // For the moment, only write on Y row boundaries (every 8 vertical pixels)
+  y = y/8;
 
-    ch = toupper(ch);
-    int idx = GetFontIndex(ch);
-    int fb_idx = y * 128 + x;
+  ch = toupper(ch);
+  int idx = GetFontIndex(ch);
+  int fb_idx = y * 128 + x;
 
-    for (int i=0;i<8;i++) {
-        buf[fb_idx++] = font[idx * 8 + i];
-    }
+  for (int i=0;i<8;i++) {
+    buf[fb_idx++] = font[idx * 8 + i];
+  }
 }
 
 static void WriteString(uint8_t *buf, int16_t x, int16_t y, char *str) {
-    // Cull out any string off the screen
-    if (x > SSD1306_WIDTH - 8 || y > SSD1306_HEIGHT - 8)
-        return;
+  // Cull out any string off the screen
+  if (x > SSD1306_WIDTH - 8 || y > SSD1306_HEIGHT - 8)
+    return;
 
-    while (*str) {
-        WriteChar(buf, x, y, *str++);
-        x+=8;
-    }
+  while (*str) {
+    WriteChar(buf, x, y, *str++);
+    x+=8;
+  }
 }
 
-void render(uint8_t *buf, struct render_area *area) {
-    // update a portion of the display with a render area
-    uint8_t cmds[] = {
-        SSD1306_SET_COL_ADDR,
-        area->start_col,
-        area->end_col,
-        SSD1306_SET_PAGE_ADDR,
-        area->start_page,
-        area->end_page
-    };
+static void render(uint8_t *buf, struct render_area *area) {
+  // update a portion of the display with a render area
+  uint8_t cmds[] = {
+    SSD1306_SET_COL_ADDR,
+    area->start_col,
+    area->end_col,
+    SSD1306_SET_PAGE_ADDR,
+    area->start_page,
+    area->end_page
+  };
 
-    SSD1306_send_cmd_list(cmds, count_of(cmds));
-    SSD1306_send_buf(buf, area->buflen);
+  SSD1306_send_cmd_list(cmds, count_of(cmds));
+  SSD1306_send_buf(buf, area->buflen);
 }
 
 void display_text(int num_args, ...){
-
   struct render_area frame_area = {
   start_col: 0,
   end_col : SSD1306_WIDTH - 1,
@@ -170,20 +169,20 @@ void display_text(int num_args, ...){
   uint8_t buf[SSD1306_BUF_LEN];
   memset(buf, 0, SSD1306_BUF_LEN);
   render(buf, &frame_area);
-    va_list args;
-    va_start(args, num_args);
-    int y = 0;
-    for (int i = 0; i < num_args; ++i) {
-        char *text = va_arg(args, char *);
-        WriteString(buf, 5, y, text);
-        y+=8;
-    }
-    va_end(args);
-    render(buf, &frame_area);
+  va_list args;
+  va_start(args, num_args);
+  int y = 0;
+  for (int i = 0; i < num_args; ++i) {
+    char *text = va_arg(args, char *);
+    WriteString(buf, 5, y, text);
+    y+=8;
+  }
+  va_end(args);
+  render(buf, &frame_area);
 }
 
-int main() {
-  display_init();  // Initialize render area for entire frame (SSD1306_WIDTH pixels by SSD1306_NUM_PAGES pages)
-  display_text(3, " HELLO ", " WORLD ", " BLALBLA");
-  return 1;
-}
+//int main() {
+//  display_init();  // Initialize render area for entire frame (SSD1306_WIDTH pixels by SSD1306_NUM_PAGES pages)
+//  display_text(2, " HELLO ", " WORLD ");
+//  return 1;
+//}

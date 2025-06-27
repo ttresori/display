@@ -7,7 +7,7 @@ project(display)
 pico_sdk_init()
 
 set(	SRC
-	src/main.c
+	src/display.c
 )
 
 set( HEADER
